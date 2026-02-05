@@ -220,13 +220,21 @@ backend no_backend
     # Генерация backend секций для каждого домена
     for domain in domains:
         backend_name = sanitize_backend_name(domain.domain)
-        ssl_options = ""
         
         if domain.ssl_mode == "reencrypt":
-            ssl_options = " ssl verify none"
-        
-        config += f'''backend {backend_name}
-    server srv1 {domain.backend_ip}:{domain.backend_port}{ssl_options} check
+            # Re-encrypt: прокси подключается к бэкенду по HTTPS
+            # sni - передаём имя домена для SNI (важно для бэкендов с несколькими сертификатами)
+            # verify none - не проверяем сертификат бэкенда (self-signed или внутренний)
+            config += f'''backend {backend_name}
+    http-request set-header X-Forwarded-Host %[req.hdr(host)]
+    server srv1 {domain.backend_ip}:{domain.backend_port} ssl verify none sni str({domain.domain}) check
+
+'''
+        else:
+            # Termination: прокси подключается к бэкенду по HTTP
+            config += f'''backend {backend_name}
+    http-request set-header X-Forwarded-Host %[req.hdr(host)]
+    server srv1 {domain.backend_ip}:{domain.backend_port} check
 
 '''
     
