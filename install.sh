@@ -34,18 +34,18 @@ if ! grep -q "Ubuntu" /etc/os-release 2>/dev/null; then
     echo -e "${YELLOW}Предупреждение: Этот скрипт оптимизирован для Ubuntu 24.04${NC}"
 fi
 
-echo -e "${YELLOW}[1/8] Обновление системы и установка зависимостей...${NC}"
+echo -e "${YELLOW}[1/9] Обновление системы и установка зависимостей...${NC}"
 apt-get update -qq
 apt-get install -y -qq haproxy certbot python3 python3-pip python3-venv openssl curl > /dev/null
 
-echo -e "${YELLOW}[2/8] Создание директорий...${NC}"
+echo -e "${YELLOW}[2/9] Создание директорий...${NC}"
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$HAPROXY_MAPS_DIR"
 mkdir -p "$HAPROXY_CERTS_DIR"
 mkdir -p "$INSTALL_DIR/templates"
 
 # Генерация пароля администратора
-echo -e "${YELLOW}[3/8] Генерация учетных данных администратора...${NC}"
+echo -e "${YELLOW}[3/9] Генерация учетных данных администратора...${NC}"
 if [ ! -f "$INSTALL_DIR/.admin_password" ]; then
     ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d '=/+' | head -c 16)
     echo "$ADMIN_PASSWORD" > "$INSTALL_DIR/.admin_password"
@@ -204,6 +204,9 @@ systemctl enable fastproxy
 systemctl restart fastproxy
 
 echo -e "${YELLOW}[9/9] Настройка автообновления сертификатов...${NC}"
+# Создание директории для хуков certbot (если certbot ещё не запускался)
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+
 # Создание хука для certbot
 cat > /etc/letsencrypt/renewal-hooks/deploy/haproxy-reload.sh << 'CERTBOT_HOOK'
 #!/bin/bash
@@ -225,8 +228,7 @@ if haproxy -c -f /etc/haproxy/haproxy.cfg > /dev/null 2>&1; then
 fi
 CERTBOT_HOOK
 
-chmod +x /etc/letsencrypt/renewal-hooks/deploy/haproxy-reload.sh 2>/dev/null || true
-mkdir -p /etc/letsencrypt/renewal-hooks/deploy 2>/dev/null || true
+chmod +x /etc/letsencrypt/renewal-hooks/deploy/haproxy-reload.sh
 
 # Настройка cron для автообновления (certbot обычно уже настраивает это)
 if ! crontab -l 2>/dev/null | grep -q "certbot renew"; then
