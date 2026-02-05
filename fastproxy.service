@@ -1,0 +1,28 @@
+[Unit]
+Description=FastProxy HAProxy Management Panel
+Documentation=https://github.com/user/fastproxy
+After=network.target haproxy.service
+Wants=haproxy.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/fastproxy
+Environment="PATH=/opt/fastproxy/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+ExecStart=/opt/fastproxy/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fastproxy
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=false
+ProtectHome=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

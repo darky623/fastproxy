@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastProxy - HAProxy Management Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="app">
+        <!-- Login Screen -->
+        <div id="login-screen" class="min-h-screen flex items-center justify-center">
+            <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md fade-in">
+                <div class="text-center mb-8">
+                    <h1 class="text-3xl font-bold text-gray-800">FastProxy</h1>
+                    <p class="text-gray-500 mt-2">HAProxy Management Panel</p>
+                </div>
+                <form id="login-form" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Login</label>
+                        <input type="text" id="login-username" value="admin" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition"
+                               placeholder="admin">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <input type="password" id="login-password" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition"
+                               placeholder="Enter password">
+                    </div>
+                    <div id="login-error" class="text-red-500 text-sm hidden"></div>
+                    <button type="submit" 
+                            class="w-full bg-primary text-white py-3 rounded-lg font-medium hover:bg-blue-600 transition focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                        Sign In
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard -->
+        <div id="dashboard-screen" class="hidden">
+            <!-- Header -->
+            <header class="bg-white shadow-sm">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+                    <h1 class="text-2xl font-bold text-gray-800">FastProxy Panel</h1>
+                    <div class="flex items-center gap-4">
+                        <span id="health-status" class="text-sm text-gray-500"></span>
+                        <button onclick="logout()" 
+                                class="text-gray-600 hover:text-gray-800 transition font-medium">
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <div class="text-gray-500 text-sm font-medium">Total Domains</div>
+                        <div id="stat-total" class="text-3xl font-bold text-gray-800 mt-2">0</div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <div class="text-gray-500 text-sm font-medium">Valid SSL</div>
+                        <div id="stat-valid" class="text-3xl font-bold text-green-600 mt-2">0</div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-6">
+                        <div class="text-gray-500 text-sm font-medium">Needs Attention</div>
+                        <div id="stat-warning" class="text-3xl font-bold text-yellow-600 mt-2">0</div>
+                    </div>
+                </div>
+
+                <!-- Actions Bar -->
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-semibold text-gray-800">Proxy Domains</h2>
+                    <button onclick="openAddModal()" 
+                            class="bg-primary text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-600 transition flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        Add Domain
+                    </button>
+                </div>
+
+                <!-- Domains Table -->
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Domain</th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Backend</th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">SSL Mode</th>
+                                <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Certificate</th>
+                                <th class="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="domains-table" class="divide-y divide-gray-200">
+                            <tr>
+                                <td colspan="5" class="px-6 py-8 text-center text-gray-500">
+                                    Loading...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+
+        <!-- Add Domain Modal -->
+        <div id="add-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 fade-in">
+                <div class="flex justify-between items-center px-6 py-4 border-b">
+                    <h3 class="text-lg font-semibold text-gray-800">Add Domain</h3>
+                    <button onclick="closeAddModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <form id="add-form" class="p-6 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Domain</label>
+                        <input type="text" id="add-domain" required
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                               placeholder="example.com">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Backend IP</label>
+                            <input type="text" id="add-ip" required
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                                   placeholder="192.168.1.10">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Port</label>
+                            <input type="number" id="add-port" required min="1" max="65535"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                                   placeholder="80" value="80">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3">SSL Mode</label>
+                        <div class="space-y-3">
+                            <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
+                                <input type="radio" name="ssl-mode" value="termination" checked 
+                                       class="mt-1 text-primary focus:ring-primary">
+                                <div>
+                                    <div class="font-medium text-gray-800">SSL Termination</div>
+                                    <div class="text-sm text-gray-500">Proxy terminates SSL, connects to backend via HTTP</div>
+                                </div>
+                            </label>
+                            <label class="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition">
+                                <input type="radio" name="ssl-mode" value="reencrypt" 
+                                       class="mt-1 text-primary focus:ring-primary">
+                                <div>
+                                    <div class="font-medium text-gray-800">SSL Re-encrypt</div>
+                                    <div class="text-sm text-gray-500">Proxy terminates SSL, re-encrypts to backend via HTTPS</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="add-error" class="text-red-500 text-sm hidden"></div>
+                    <div class="flex gap-3 pt-4">
+                        <button type="button" onclick="closeAddModal()" 
+                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition">
+                            Cancel
+                        </button>
+                        <button type="submit" id="add-submit"
+                                class="flex-1 px-4 py-2 bg-primary text-white rounded-lg font-medium hover:bg-blue-600 transition">
+                            Add Domain
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Confirm Delete Modal -->
+        <div id="delete-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 fade-in">
+                <div class="p-6">
+                    <div class="text-center">
+                        <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                            <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-2">Delete Domain</h3>
+                        <p class="text-gray-500 mb-1">Are you sure you want to delete</p>
+                        <p id="delete-domain-name" class="font-semibold text-gray-800 mb-4"></p>
+                        <p class="text-sm text-gray-500">This will also remove the SSL certificate.</p>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button onclick="closeDeleteModal()" 
+                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition">
+                            Cancel
+                        </button>
+                        <button onclick="confirmDelete()" id="delete-confirm"
+                                class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg hidden fade-in">
+            <span id="toast-message"></span>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let token = localStorage.getItem('token');
+        let domains = [];
+        let deleteId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            if (token) {
+                showDashboard();
+                loadDomains();
+                checkHealth();
+            } else {
+                showLogin();
+            }
+        });
+
+        // Auth
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || 'Login failed');
+                }
+                
+                const data = await res.json();
+                token = data.access_token;
+                localStorage.setItem('token', token);
+                errorEl.classList.add('hidden');
+                showDashboard();
+                loadDomains();
+                checkHealth();
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.classList.remove('hidden');
+            }
+        });
+
+        function logout() {
+            token = null;
+            localStorage.removeItem('token');
+            showLogin();
+        }
+
+        function showLogin() {
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.getElementById('dashboard-screen').classList.add('hidden');
+        }
+
+        function showDashboard() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('dashboard-screen').classList.remove('hidden');
+        }
+
+        // API calls
+        async function apiCall(url, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+            if (body) options.body = JSON.stringify(body);
+            
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                logout();
+                throw new Error('Session expired');
+            }
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || 'Request failed');
+            }
+            return res.json();
+        }
+
+        async function loadDomains() {
+            try {
+                domains = await apiCall('/api/domains');
+                renderDomains();
+                updateStats();
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const data = await fetch('/api/health').then(r => r.json());
+                const statusEl = document.getElementById('health-status');
+                statusEl.textContent = `HAProxy: ${data.haproxy}`;
+                statusEl.className = data.haproxy === 'active' 
+                    ? 'text-sm text-green-600' 
+                    : 'text-sm text-red-600';
+            } catch (err) {
+                console.error('Health check failed:', err);
+            }
+        }
+
+        function renderDomains() {
+            const tbody = document.getElementById('domains-table');
+            
+            if (domains.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-6 py-12 text-center">
+                            <div class="text-gray-400 mb-2">
+                                <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path>
+                                </svg>
+                            </div>
+                            <p class="text-gray-500">No domains configured</p>
+                            <p class="text-gray-400 text-sm">Click "Add Domain" to get started</p>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = domains.map(d => `
+                <tr class="hover:bg-gray-50 transition">
+                    <td class="px-6 py-4">
+                        <div class="font-medium text-gray-800">${escapeHtml(d.domain)}</div>
+                        <div class="text-sm text-gray-500">${formatDate(d.created_at)}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <code class="bg-gray-100 px-2 py-1 rounded text-sm">${escapeHtml(d.backend_ip)}:${d.backend_port}</code>
+                    </td>
+                    <td class="px-6 py-4">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            d.ssl_mode === 'reencrypt' 
+                                ? 'bg-purple-100 text-purple-800' 
+                                : 'bg-blue-100 text-blue-800'
+                        }">
+                            ${d.ssl_mode === 'reencrypt' ? 'Re-encrypt' : 'Termination'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4">
+                        ${renderCertStatus(d)}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex justify-end gap-2">
+                            <button onclick="issueCert(${d.id})" 
+                                    class="text-primary hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition"
+                                    title="Issue/Renew SSL Certificate">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                </svg>
+                            </button>
+                            <button onclick="openDeleteModal(${d.id}, '${escapeHtml(d.domain)}')" 
+                                    class="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition"
+                                    title="Delete Domain">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderCertStatus(domain) {
+            const status = domain.cert_status;
+            const expiry = domain.cert_expiry ? new Date(domain.cert_expiry) : null;
+            
+            if (status === 'valid') {
+                const days = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
+                return `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                        <span class="text-green-700 text-sm">Valid (${days}d)</span>
+                    </div>
+                `;
+            } else if (status === 'warning') {
+                const days = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
+                return `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                        <span class="text-yellow-700 text-sm">Expires in ${days}d</span>
+                    </div>
+                `;
+            } else if (status === 'expiring_soon') {
+                const days = Math.ceil((expiry - new Date()) / (1000 * 60 * 60 * 24));
+                return `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                        <span class="text-orange-700 text-sm font-medium">Expires in ${days}d!</span>
+                    </div>
+                `;
+            } else if (status === 'expired') {
+                return `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                        <span class="text-red-700 text-sm font-medium">Expired</span>
+                    </div>
+                `;
+            } else {
+                return `
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 bg-gray-400 rounded-full"></span>
+                        <span class="text-gray-500 text-sm">Not issued</span>
+                    </div>
+                `;
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-total').textContent = domains.length;
+            document.getElementById('stat-valid').textContent = domains.filter(d => d.cert_status === 'valid').length;
+            document.getElementById('stat-warning').textContent = domains.filter(d => 
+                ['warning', 'expiring_soon', 'expired', 'missing'].includes(d.cert_status)
+            ).length;
+        }
+
+        // Add Domain
+        function openAddModal() {
+            document.getElementById('add-modal').classList.remove('hidden');
+            document.getElementById('add-modal').classList.add('flex');
+            document.getElementById('add-domain').focus();
+        }
+
+        function closeAddModal() {
+            document.getElementById('add-modal').classList.add('hidden');
+            document.getElementById('add-modal').classList.remove('flex');
+            document.getElementById('add-form').reset();
+            document.getElementById('add-error').classList.add('hidden');
+        }
+
+        document.getElementById('add-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('add-submit');
+            const errorEl = document.getElementById('add-error');
+            
+            const data = {
+                domain: document.getElementById('add-domain').value.trim().toLowerCase(),
+                backend_ip: document.getElementById('add-ip').value.trim(),
+                backend_port: parseInt(document.getElementById('add-port').value),
+                ssl_mode: document.querySelector('input[name="ssl-mode"]:checked').value
+            };
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span> Adding...';
+            
+            try {
+                await apiCall('/api/domains', 'POST', data);
+                closeAddModal();
+                await loadDomains();
+                showToast('Domain added successfully');
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Add Domain';
+            }
+        });
+
+        // Delete Domain
+        function openDeleteModal(id, domain) {
+            deleteId = id;
+            document.getElementById('delete-domain-name').textContent = domain;
+            document.getElementById('delete-modal').classList.remove('hidden');
+            document.getElementById('delete-modal').classList.add('flex');
+        }
+
+        function closeDeleteModal() {
+            deleteId = null;
+            document.getElementById('delete-modal').classList.add('hidden');
+            document.getElementById('delete-modal').classList.remove('flex');
+        }
+
+        async function confirmDelete() {
+            if (!deleteId) return;
+            
+            const btn = document.getElementById('delete-confirm');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>';
+            
+            try {
+                await apiCall(`/api/domains/${deleteId}`, 'DELETE');
+                closeDeleteModal();
+                await loadDomains();
+                showToast('Domain deleted successfully');
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Delete';
+            }
+        }
+
+        // Issue Certificate
+        async function issueCert(id) {
+            const domain = domains.find(d => d.id === id);
+            if (!domain) return;
+            
+            if (!confirm(`Issue SSL certificate for ${domain.domain}?\n\nThis will temporarily stop HAProxy on port 80.`)) {
+                return;
+            }
+            
+            showToast('Issuing certificate... This may take a minute.');
+            
+            try {
+                await apiCall(`/api/domains/${id}/cert`, 'POST');
+                await loadDomains();
+                showToast('Certificate issued successfully');
+            } catch (err) {
+                showToast(err.message, 'error');
+            }
+        }
+
+        // Helpers
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('ru-RU', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-message');
+            
+            toast.className = `fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg fade-in ${
+                type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-800 text-white'
+            }`;
+            msgEl.textContent = message;
+            toast.classList.remove('hidden');
+            
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 4000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeAddModal();
+                closeDeleteModal();
+            }
+        });
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            if (token) {
+                loadDomains();
+                checkHealth();
+            }
+        }, 30000);
+    </script>
+</body>
+</html>
