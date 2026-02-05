@@ -14,6 +14,9 @@ HAPROXY_CFG="/etc/haproxy/haproxy.cfg"
 HAPROXY_MAPS_DIR="/etc/haproxy/maps"
 HAPROXY_CERTS_DIR="/etc/haproxy/certs"
 
+# URL репозитория для скачивания файлов
+REPO_RAW_URL="https://raw.githubusercontent.com/darky623/fastproxy/main"
+
 echo -e "${GREEN}╔════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║       FastProxy Installer v1.0             ║${NC}"
 echo -e "${GREEN}║   HAProxy Management Panel for Ubuntu      ║${NC}"
@@ -60,30 +63,43 @@ if [ ! -f "$INSTALL_DIR/.jwt_secret" ]; then
     chmod 600 "$INSTALL_DIR/.jwt_secret"
 fi
 
-echo -e "${YELLOW}[4/8] Настройка Python окружения...${NC}"
+echo -e "${YELLOW}[4/9] Скачивание файлов приложения...${NC}"
+
+# Функция для скачивания файла
+download_file() {
+    local url="$1"
+    local dest="$2"
+    echo "  Скачивание: $(basename "$dest")"
+    if ! curl -fsSL "$url" -o "$dest"; then
+        echo -e "${RED}Ошибка скачивания: $url${NC}"
+        exit 1
+    fi
+}
+
+# Проверяем, запущен ли скрипт локально (файлы рядом) или через curl
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" 2>/dev/null)" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+
+if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/main.py" ] && [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+    echo "  Используются локальные файлы из: $SCRIPT_DIR"
+    cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/"
+    cp "$SCRIPT_DIR/main.py" "$INSTALL_DIR/"
+    [ -f "$SCRIPT_DIR/templates/index.html" ] && cp "$SCRIPT_DIR/templates/index.html" "$INSTALL_DIR/templates/"
+else
+    echo "  Скачивание из репозитория: $REPO_RAW_URL"
+    download_file "$REPO_RAW_URL/requirements.txt" "$INSTALL_DIR/requirements.txt"
+    download_file "$REPO_RAW_URL/main.py" "$INSTALL_DIR/main.py"
+    download_file "$REPO_RAW_URL/templates/index.html" "$INSTALL_DIR/templates/index.html"
+fi
+
+echo -e "${YELLOW}[5/9] Настройка Python окружения...${NC}"
 python3 -m venv "$INSTALL_DIR/venv"
 source "$INSTALL_DIR/venv/bin/activate"
 
-# Копирование файлов приложения (предполагается, что они в текущей директории)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
-    cp "$SCRIPT_DIR/requirements.txt" "$INSTALL_DIR/"
-fi
-
-if [ -f "$SCRIPT_DIR/main.py" ]; then
-    cp "$SCRIPT_DIR/main.py" "$INSTALL_DIR/"
-fi
-
-if [ -f "$SCRIPT_DIR/templates/index.html" ]; then
-    cp "$SCRIPT_DIR/templates/index.html" "$INSTALL_DIR/templates/"
-fi
-
-echo -e "${YELLOW}[5/8] Установка Python зависимостей...${NC}"
+echo -e "${YELLOW}[6/9] Установка Python зависимостей...${NC}"
 pip install --quiet --upgrade pip
 pip install --quiet -r "$INSTALL_DIR/requirements.txt"
 
-echo -e "${YELLOW}[6/8] Настройка HAProxy...${NC}"
+echo -e "${YELLOW}[7/9] Настройка HAProxy...${NC}"
 # Создание пустого map-файла
 touch "$HAPROXY_MAPS_DIR/domain_backend.map"
 
@@ -161,7 +177,7 @@ else
     echo -e "${RED}Ошибка в конфигурации HAProxy!${NC}"
 fi
 
-echo -e "${YELLOW}[7/8] Настройка systemd сервиса...${NC}"
+echo -e "${YELLOW}[8/9] Настройка systemd сервиса...${NC}"
 cat > /etc/systemd/system/fastproxy.service << SYSTEMD_SERVICE
 [Unit]
 Description=FastProxy HAProxy Management Panel
@@ -187,7 +203,7 @@ systemctl daemon-reload
 systemctl enable fastproxy
 systemctl restart fastproxy
 
-echo -e "${YELLOW}[8/8] Настройка автообновления сертификатов...${NC}"
+echo -e "${YELLOW}[9/9] Настройка автообновления сертификатов...${NC}"
 # Создание хука для certbot
 cat > /etc/letsencrypt/renewal-hooks/deploy/haproxy-reload.sh << 'CERTBOT_HOOK'
 #!/bin/bash

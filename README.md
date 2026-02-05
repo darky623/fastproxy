@@ -21,18 +21,28 @@
 
 ### Быстрая установка (одной командой)
 
+Скрипт автоматически скачает все необходимые файлы из GitHub:
+
 ```bash
-curl -sSL https://raw.githubusercontent.com/user/fastproxy/main/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/darky623/fastproxy/main/install.sh | sudo bash
 ```
 
 ### Локальная установка
 
+Если файлы уже скачаны локально, скрипт использует их вместо скачивания:
+
 ```bash
-git clone https://github.com/user/fastproxy.git
+git clone https://github.com/darky623/fastproxy.git
 cd fastproxy
 chmod +x install.sh
 sudo ./install.sh
 ```
+
+### Как это работает
+
+Скрипт `install.sh` автоматически определяет способ запуска:
+- **Локально** (файлы рядом): копирует `main.py`, `requirements.txt`, `templates/index.html`
+- **Через curl**: скачивает файлы из GitHub репозитория
 
 После установки скрипт выведет:
 - URL панели управления (http://IP:8080)
