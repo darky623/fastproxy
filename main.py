@@ -225,9 +225,10 @@ backend no_backend
             # Re-encrypt: прокси подключается к бэкенду по HTTPS
             # sni - передаём имя домена для SNI (важно для бэкендов с несколькими сертификатами)
             # verify none - не проверяем сертификат бэкенда (self-signed или внутренний)
+            # check-ssl check-sni - правильный health check для SSL с SNI
             config += f'''backend {backend_name}
     http-request set-header X-Forwarded-Host %[req.hdr(host)]
-    server srv1 {domain.backend_ip}:{domain.backend_port} ssl verify none sni str({domain.domain}) check
+    server srv1 {domain.backend_ip}:{domain.backend_port} ssl verify none sni str({domain.domain}) check check-ssl check-sni {domain.domain}
 
 '''
         else:
